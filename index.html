@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Kinematics Frame Simulator</title>
+    <style>
+        /* ========================
+           CSS STYLES & GLASSMORPHISM
+           ======================== */
+        :root {
+            --bg-color: #111827;
+            --panel-bg: rgba(31, 41, 55, 0.6);
+            --border-color: rgba(255, 255, 255, 0.15);
+            --text-light: #e5e7eb;
+            --accent-red: #ef4444;
+            --accent-green: #10b981;
+            --accent-blue: #3b82f6;
+            --btn-hover: rgba(255, 255, 255, 0.1);
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: var(--bg-color);
+            color: var(--text-light);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+        }
+
+        #canvas-container {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+        }
+
+        .ui-panel {
+            position: absolute;
+            z-index: 10;
+            background: var(--panel-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            max-height: 90vh;
+            overflow-y: auto;
+            scrollbar-width: thin;
+        }
+
+        /* Left Panel - Controls */
+        #controls-panel {
+            top: 20px;
+            left: 20px;
+            width: 320px;
+        }
+
+        /* Right Panel - Matrices */
+        #matrix-panel {
+            top: 20px;
+            right: 20px;
+            width: 380px;
+        }
+
+        h2 {
+            margin-top: 0;
+            font-size: 1.2rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+            text-align: center;
+            letter-spacing: 1px;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        .control-group label {
+            display: inline-block;
+            width: 60px;
+            font-weight: 600;
+        }
+
+        .input-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            background: rgba(0,0,0,0.2);
+            padding: 5px 10px;
+            border-radius: 6px;
+        }
+
+        input[type="number"] {
+            width: 70px;
+            background: transparent;
+            border: none;
+            border-bottom: 1px solid var(--text-light);
+            color: white;
+            padding: 4px;
+            margin-left: 10px;
+            font-family: monospace;
+            text-align: right;
+        }
+
+        input[type="number"]:focus {
+            outline: none;
+            border-bottom-color: var(--accent-blue);
+        }
+
+        /* Axis Colors for UI */
+        .color-x { color: var(--accent-red); }
+        .color-y { color: var(--accent-green); }
+        .color-z { color: var(--accent-blue); }
+
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            margin-top: 10px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--border-color);
+            color: white;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: bold;
+            letter-spacing: 0.5px;
+        }
+
+        .btn:hover {
+            background: var(--btn-hover);
+            transform: translateY(-1px);
+        }
+
+        .btn-primary { background: rgba(59, 130, 246, 0.2); border-color: var(--accent-blue); }
+        .btn-primary:hover { background: rgba(59, 130, 246, 0.4); }
+
+        .matrix-display {
+            font-family: 'Courier New', Courier, monospace;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 15px;
+            border-radius: 8px;
+            white-space: pre;
+            overflow-x: auto;
+            font-size: 0.95rem;
+            line-height: 1.4;
+            color: #a78bfa; /* Light purple for matrix */
+        }
+
+        .info-text {
+            font-size: 0.85rem;
+            color: #9ca3af;
+            margin-top: 15px;
+            line-height: 1.5;
+        }
+
+        .toggle-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+        }
+
+        .presets {
+            display: flex;
+            gap: 5px;
+            margin-top: 10px;
+        }
+        .presets button {
+            flex: 1;
+            font-size: 0.75rem;
+            padding: 5px;
+        }
+
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+    </style>
+
+    <!-- Importmap for Three.js ES Modules -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <!-- 3D Canvas Container -->
+    <div id="canvas-container"></div>
+
+    <!-- Left UI Panel: Controls -->
+    <div class="ui-panel" id="controls-panel">
+        <h2>Frame Controls</h2>
+        
+        <div class="control-group">
+            <div style="margin-bottom: 10px; font-weight: bold; font-size: 0.9rem;">Translation (Units)</div>
+            <div class="input-row">
+                <label class="color-x">dx :</label>
+                <input type="number" id="dx" value="5" step="1">
+            </div>
+            <div class="input-row">
+                <label class="color-y">dy :</label>
+                <input type="number" id="dy" value="5" step="1">
+            </div>
+            <div class="input-row">
+                <label class="color-z">dz :</label>
+                <input type="number" id="dz" value="0" step="1">
+            </div>
+        </div>
+
+        <div class="control-group">
+            <div style="margin-bottom: 10px; font-weight: bold; font-size: 0.9rem;">Rotation (Degrees)</div>
+            <div class="input-row">
+                <label class="color-x">Rx (roll):</label>
+                <input type="number" id="rx" value="0" step="5">
+            </div>
+            <div class="input-row">
+                <label class="color-y">Ry (pitch):</label>
+                <input type="number" id="ry" value="0" step="5">
+            </div>
+            <div class="input-row">
+                <label class="color-z">Rz (yaw):</label>
+                <input type="number" id="rz" value="45" step="5">
+            </div>
+        </div>
+
+        <button class="btn btn-primary" id="btn-animate">Animate Transformation</button>
+        <button class="btn" id="btn-apply">Apply Instant</button>
+        <button class="btn" id="btn-reset">Reset Frame</button>
+
+        <div class="info-text">
+            <strong>Presets:</strong>
+            <div class="presets">
+                <button class="btn" id="preset-trans">Translation</button>
+                <button class="btn" id="preset-rot">Rotation</button>
+                <button class="btn" id="preset-comb">Combined</button>
+            </div>
+        </div>
+
+        <div class="info-text" style="border-top: 1px solid var(--border-color); padding-top: 10px;">
+            <strong>Bonus Features:</strong>
+            <div class="toggle-row" style="margin-top: 8px;">
+                <span>Show World Frame</span>
+                <input type="checkbox" id="toggle-world" checked>
+            </div>
+            <div class="toggle-row">
+                <span>Show Labels</span>
+                <input type="checkbox" id="toggle-labels" checked>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right UI Panel: Mathematical Outputs -->
+    <div class="ui-panel" id="matrix-panel">
+        <h2>Kinematics Data</h2>
+        
+        <div style="font-size: 0.9rem; margin-bottom: 8px; color: var(--text-light);">Homogeneous Matrix (4×4): <br><span style="font-size:0.75rem;">T = Trans(dx,dy,dz) × Rz × Ry × Rx</span></div>
+        <div class="matrix-display" id="disp-homo-matrix">
+[ 1.00  0.00  0.00  0.00 ]
+[ 0.00  1.00  0.00  0.00 ]
+[ 0.00  0.00  1.00  0.00 ]
+[ 0.00  0.00  0.00  1.00 ]
+        </div>
+
+        <div style="font-size: 0.9rem; margin-top: 15px; margin-bottom: 8px; color: var(--text-light);">Rotation Matrix (3×3) [R]:</div>
+        <div class="matrix-display" id="disp-rot-matrix">
+[ 1.00  0.00  0.00 ]
+[ 0.00  1.00  0.00 ]
+[ 0.00  0.00  1.00 ]
+        </div>
+
+        <div style="font-size: 0.9rem; margin-top: 15px; margin-bottom: 8px; color: var(--text-light);">Position Vector [p]:</div>
+        <div class="matrix-display" id="disp-pos-vector">
+[ 0.00 ]
+[ 0.00 ]
+[ 0.00 ]
+        </div>
+
+        <div class="info-text">
+            <strong>Educational Note:</strong><br>
+            • <span class="color-x">n-axis (red)</span> = Local X-axis<br>
+            • <span class="color-y">o-axis (green)</span> = Local Y-axis<br>
+            • <span class="color-z">a-axis (blue)</span> = Local Z-axis<br><br>
+            Transformations are relative to the World Frame {W}.
+        </div>
+
+        <button class="btn" id="btn-export" style="margin-top: 15px; padding: 6px; font-size: 0.85rem;">Export Matrix as Text</button>
+    </div>
+
+    <!-- MAIN JAVASCRIPT LOGIC -->
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // ==========================================
+        // GLOBAL VARIABLES & SCENE SETUP
+        // ==========================================
+        let scene, camera, renderer, controls;
+        let worldFrame, localFrame;
+        let animationRequestId = null;
+        let labelsGroup = new THREE.Group();
+
+        // Target states for animation
+        let targetPosition = new THREE.Vector3();
+        let targetQuaternion = new THREE.Quaternion();
+        let isAnimating = false;
+        let animationProgress = 0;
+
+        init();
+        animateLoop();
+
+        // ==========================================
+        // INITIALIZATION
+        // ==========================================
+        function init() {
+            // 1. Scene, Camera, Renderer
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x111827); // Dark background
+
+            // Add grid helper for better depth perception
+            const gridHelper = new THREE.GridHelper(40, 40, 0x444444, 0x222222);
+            gridHelper.position.y = -0.01; // slightly below to avoid z-fighting
+            scene.add(gridHelper);
+
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(15, 15, 20);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+
+            // 2. Orbit Controls
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+
+            // 3. Create Frames
+            scene.add(labelsGroup);
+            worldFrame = createFrame(true);  // World frame {W}
+            localFrame = createFrame(false); // Current frame {P}
+            
+            scene.add(worldFrame);
+            scene.add(localFrame);
+
+            // 4. Initial update
+            updateMatrixDisplay(new THREE.Matrix4());
+
+            // 5. Event Listeners
+            window.addEventListener('resize', onWindowResize);
+            setupUIListeners();
+        }
+
+        // ==========================================
+        // MODULAR FUNCTIONS: FRAME CREATION
+        // ==========================================
+
+        /**
+         * Creates a coordinate frame with arrows and labels.
+         * @param {boolean} isWorld - True for World {W}, False for Local {P}
+         */
+        function createFrame(isWorld) {
+            const frameGroup = new THREE.Group();
+            const length = isWorld ? 6 : 4;
+            const headLength = length * 0.2;
+            const headWidth = headLength * 0.6;
+            
+            // Colors matching the prompt
+            const colorX = 0xef4444; // Red
+            const colorY = 0x10b981; // Green
+            const colorZ = 0x3b82f6; // Blue
+
+            // Arrow Vectors
+            const dirX = new THREE.Vector3(1, 0, 0);
+            const dirY = new THREE.Vector3(0, 1, 0);
+            const dirZ = new THREE.Vector3(0, 0, 1);
+            const origin = new THREE.Vector3(0, 0, 0);
+
+            // Create Arrows
+            const arrowX = new THREE.ArrowHelper(dirX, origin, length, colorX, headLength, headWidth);
+            const arrowY = new THREE.ArrowHelper(dirY, origin, length, colorY, headLength, headWidth);
+            const arrowZ = new THREE.ArrowHelper(dirZ, origin, length, colorZ, headLength, headWidth);
+
+            // Make lines thicker (ArrowHelper uses Line, which has limited thickness in WebGL, but we set it)
+            arrowX.line.material.linewidth = 3;
+            arrowY.line.material.linewidth = 3;
+            arrowZ.line.material.linewidth = 3;
+
+            frameGroup.add(arrowX);
+            frameGroup.add(arrowY);
+            frameGroup.add(arrowZ);
+
+            // Create Labels
+            const labelXStr = isWorld ? "X" : "n";
+            const labelYStr = isWorld ? "Y" : "o";
+            const labelZStr = isWorld ? "Z" : "a";
+
+            const labelX = createTextSprite(labelXStr, colorX);
+            const labelY = createTextSprite(labelYStr, colorY);
+            const labelZ = createTextSprite(labelZStr, colorZ);
+
+            // Position labels at the end of the arrows
+            const offset = 1.2;
+            labelX.position.set(length * offset, 0, 0);
+            labelY.position.set(0, length * offset, 0);
+            labelZ.position.set(0, 0, length * offset);
+
+            // Origin Label
+            const originLabel = createTextSprite(isWorld ? "{W}" : "{P}", 0xffffff);
+            originLabel.position.set(-0.5, -0.5, -0.5);
+
+            // Grouping labels to toggle them easily
+            const localLabelsGroup = new THREE.Group();
+            localLabelsGroup.add(labelX, labelY, labelZ, originLabel);
+            frameGroup.add(localLabelsGroup);
+            
+            // Save reference to labels for toggling
+            frameGroup.userData.labels = localLabelsGroup;
+
+            return frameGroup;
+        }
+
+        /**
+         * Creates a 2D text sprite for axis labeling.
+         * Conceptually strong and visually clean for mechanical engineering clarity.
+         */
+        function createTextSprite(text, colorHex) {
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = 128;
+            canvas.height = 128;
+
+            context.font = "bold 64px 'Segoe UI', Arial";
+            context.textAlign = "center";
+            context.textBaseline = "middle";
+            
+            // Convert hex color to string for canvas
+            const colorStr = '#' + new THREE.Color(colorHex).getHexString();
+            context.fillStyle = colorStr;
+            context.fillText(text, 64, 64);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            const spriteMaterial = new THREE.SpriteMaterial({ map: texture, transparent: true });
+            const sprite = new THREE.Sprite(spriteMaterial);
+            sprite.scale.set(2.5, 2.5, 1);
+            return sprite;
+        }
+
+        // ==========================================
+        // MODULAR FUNCTIONS: MATHEMATICS
+        // ==========================================
+
+        /**
+         * Builds the 4x4 Homogeneous Transformation Matrix.
+         * Order strictly defined as: T = Trans(dx, dy, dz) * Rz * Ry * Rx
+         * Grounded in robotics kinematics logic.
+         */
+        function buildTransformationMatrix() {
+            // Read inputs
+            const dx = parseFloat(document.getElementById('dx').value) || 0;
+            const dy = parseFloat(document.getElementById('dy').value) || 0;
+            const dz = parseFloat(document.getElementById('dz').value) || 0;
+            
+            const rx = parseFloat(document.getElementById('rx').value) || 0;
+            const ry = parseFloat(document.getElementById('ry').value) || 0;
+            const rz = parseFloat(document.getElementById('rz').value) || 0;
+
+            // Convert degrees to radians
+            const radX = THREE.MathUtils.degToRad(rx);
+            const radY = THREE.MathUtils.degToRad(ry);
+            const radZ = THREE.MathUtils.degToRad(rz);
+
+            // Create individual matrices
+            const matTrans = new THREE.Matrix4().makeTranslation(dx, dy, dz);
+            const matRotX = new THREE.Matrix4().makeRotationX(radX);
+            const matRotY = new THREE.Matrix4().makeRotationY(radY);
+            const matRotZ = new THREE.Matrix4().makeRotationZ(radZ);
+
+            // Combine matrices: T = Trans * Rz * Ry * Rx
+            // In Three.js, matrix1.multiply(matrix2) does matrix1 = matrix1 * matrix2
+            const finalMatrix = new THREE.Matrix4();
+            finalMatrix.identity();
+            
+            finalMatrix.multiply(matTrans);
+            finalMatrix.multiply(matRotZ);
+            finalMatrix.multiply(matRotY);
+            finalMatrix.multiply(matRotX);
+
+            return finalMatrix;
+        }
+
+        // ==========================================
+        // MODULAR FUNCTIONS: ACTIONS
+        // ==========================================
+
+        /**
+         * Applies the transformation instantly to the local frame.
+         */
+        function applyTransformation() {
+            const T = buildTransformationMatrix();
+            
+            // Extract position and rotation from the homogeneous matrix
+            T.decompose(localFrame.position, localFrame.quaternion, localFrame.scale);
+            
+            updateMatrixDisplay(T);
+            isAnimating = false;
+        }
+
+        /**
+         * Starts the smooth animation of the transformation.
+         */
+        function animateTransformation() {
+            const T = buildTransformationMatrix();
+            
+            // Decompose matrix to find targets
+            const dummyScale = new THREE.Vector3();
+            T.decompose(targetPosition, targetQuaternion, dummyScale);
+            
+            // Reset frame to origin before starting animation to show full motion
+            // (Or we can animate from current, but prompt implies showing *the* transformation)
+            localFrame.position.set(0, 0, 0);
+            localFrame.quaternion.identity();
+            
+            animationProgress = 0;
+            isAnimating = true;
+
+            updateMatrixDisplay(T);
+        }
+
+        /**
+         * Resets the scene to the default World Frame state.
+         */
+        function resetScene() {
+            document.getElementById('dx').value = 0;
+            document.getElementById('dy').value = 0;
+            document.getElementById('dz').value = 0;
+            document.getElementById('rx').value = 0;
+            document.getElementById('ry').value = 0;
+            document.getElementById('rz').value = 0;
+            
+            isAnimating = false;
+            localFrame.position.set(0, 0, 0);
+            localFrame.quaternion.identity();
+            
+            updateMatrixDisplay(new THREE.Matrix4());
+        }
+
+        /**
+         * Updates the UI to show the mathematical matrices clearly.
+         */
+        function updateMatrixDisplay(matrix) {
+            // Three.js Matrix4 elements are column-major:
+            // 0  4  8 12  (nx, ox, ax, px)
+            // 1  5  9 13  (ny, oy, ay, py)
+            // 2  6 10 14  (nz, oz, az, pz)
+            // 3  7 11 15  ( 0,  0,  0,  1)
+            const e = matrix.elements;
+
+            // Format numbers nicely, padded
+            const fmt = (num) => {
+                let s = num.toFixed(2);
+                return s.padStart(6, ' ');
+            };
+
+            // Homogeneous Matrix
+            const homoHTML = `[ ${fmt(e[0])}  ${fmt(e[4])}  ${fmt(e[8])}  ${fmt(e[12])} ]\n` +
+                             `[ ${fmt(e[1])}  ${fmt(e[5])}  ${fmt(e[9])}  ${fmt(e[13])} ]\n` +
+                             `[ ${fmt(e[2])}  ${fmt(e[6])}  ${fmt(e[10])}  ${fmt(e[14])} ]\n` +
+                             `[ ${fmt(e[3])}  ${fmt(e[7])}  ${fmt(e[11])}  ${fmt(e[15])} ]`;
+            document.getElementById('disp-homo-matrix').textContent = homoHTML;
+
+            // Rotation Matrix (R)
+            const rotHTML = `[ ${fmt(e[0])}  ${fmt(e[4])}  ${fmt(e[8])} ]\n` +
+                            `[ ${fmt(e[1])}  ${fmt(e[5])}  ${fmt(e[9])} ]\n` +
+                            `[ ${fmt(e[2])}  ${fmt(e[6])}  ${fmt(e[10])} ]`;
+            document.getElementById('disp-rot-matrix').textContent = rotHTML;
+
+            // Position Vector (p)
+            const posHTML = `[ ${fmt(e[12])} ]\n` +
+                            `[ ${fmt(e[13])} ]\n` +
+                            `[ ${fmt(e[14])} ]`;
+            document.getElementById('disp-pos-vector').textContent = posHTML;
+        }
+
+        /**
+         * Main Render Loop handling OrbitControls and custom animations.
+         */
+        function animateLoop() {
+            requestAnimationFrame(animateLoop);
+
+            // Handle smooth animation logic
+            if (isAnimating) {
+                animationProgress += 0.015; // Animation speed step
+                if (animationProgress >= 1.0) {
+                    animationProgress = 1.0;
+                    isAnimating = false;
+                }
+
+                // Easing function: smoothstep
+                const ease = animationProgress * animationProgress * (3 - 2 * animationProgress);
+
+                // Slerp for rotation (spherical linear interpolation)
+                const startQuat = new THREE.Quaternion().identity();
+                localFrame.quaternion.copy(startQuat).slerp(targetQuaternion, ease);
+
+                // Lerp for translation (linear interpolation)
+                const startPos = new THREE.Vector3(0,0,0);
+                localFrame.position.copy(startPos).lerp(targetPosition, ease);
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // ==========================================
+        // EVENT LISTENERS & UI LOGIC
+        // ==========================================
+        function setupUIListeners() {
+            document.getElementById('btn-apply').addEventListener('click', applyTransformation);
+            document.getElementById('btn-animate').addEventListener('click', animateTransformation);
+            document.getElementById('btn-reset').addEventListener('click', resetScene);
+
+            // Toggles
+            document.getElementById('toggle-world').addEventListener('change', (e) => {
+                worldFrame.visible = e.target.checked;
+            });
+
+            document.getElementById('toggle-labels').addEventListener('change', (e) => {
+                const visible = e.target.checked;
+                worldFrame.userData.labels.visible = visible;
+                localFrame.userData.labels.visible = visible;
+            });
+
+            // Presets
+            document.getElementById('preset-trans').addEventListener('click', () => {
+                setInputs(8, 0, -5, 0, 0, 0); animateTransformation();
+            });
+            document.getElementById('preset-rot').addEventListener('click', () => {
+                setInputs(0, 0, 0, 45, 30, 90); animateTransformation();
+            });
+            document.getElementById('preset-comb').addEventListener('click', () => {
+                setInputs(5, 5, 5, 30, 45, 60); animateTransformation();
+            });
+
+            // Export Matrix
+            document.getElementById('btn-export').addEventListener('click', () => {
+                const text = document.getElementById('disp-homo-matrix').textContent;
+                navigator.clipboard.writeText(text).then(() => {
+                    const btn = document.getElementById('btn-export');
+                    btn.textContent = "Copied to Clipboard!";
+                    setTimeout(() => btn.textContent = "Export Matrix as Text", 2000);
+                });
+            });
+        }
+
+        function setInputs(dx, dy, dz, rx, ry, rz) {
+            document.getElementById('dx').value = dx;
+            document.getElementById('dy').value = dy;
+            document.getElementById('dz').value = dz;
+            document.getElementById('rx').value = rx;
+            document.getElementById('ry').value = ry;
+            document.getElementById('rz').value = rz;
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+    </script>
+</body>
+</html>
